@@ -137,10 +137,11 @@ if(any(model$not.na == FALSE)){
     mod_table$name <- factor(mod_table$name,
                              levels = mod_table$name,
                              labels = mod_table$name)
+  }
 
 # CONTINUOUS MODERATOR ----------------------------------------------------
 
-  } else{
+ else{
     at2 <- list(mod = seq(min(data[,mod], na.rm = TRUE), max(data[,mod], na.rm = TRUE), length.out = 100))
     names(at2) <- mod
     grid <- emmeans::qdrg(formula =  stats::formula(model), data = data, coef = model$b,
