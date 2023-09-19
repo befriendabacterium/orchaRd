@@ -143,7 +143,7 @@ if(any(model$not.na == FALSE)){
 
  else{
 
-   ## Linear continuous variable ----
+   ## Continuous variable modelled linearly ----
 
    #if the model's moderator does not contain a polynomial, restricted cubic spline, natural cubic spline, or thin plate spline, assume it is linear and proceed with following code
    if (!grepl('
@@ -183,8 +183,37 @@ if(any(model$not.na == FALSE)){
     # extract data
     data2 <- get_data_raw_cont(model, mod, group, N, by = by)
 
-  }
+   }
+
+   #NB non-linear options are based on/limited to the examples given in metafor documentation: https://www.metafor-project.org/doku.php/tips:non_linear_meta_regression
+
+   # Continuous variable modelled as a polynomial ----
+
+   if (grepl('poly|stats::poly', formula(model)[2])){
+
+   }
+
+   # Continuous variable modelled as a restricted cubic spline ----
+
+   if (grepl('rcs|rms::rcs', formula(model)[2])){
+
+   }
+
+   # Continuous variable modelled as a natural cubic spline ----
+
+   if (grepl('ns|splines::ns', formula(model)[2])){
+
+   }
+
+   # Continuous variable modelled as a thin plate spline ----
+
+   if (grepl('smoothCon|mgcv::smoothCon', formula(model)[2])){
+
+   }
+
  }
+
+
 
   output <- list(mod_table = mod_table,
                  data = data2)
