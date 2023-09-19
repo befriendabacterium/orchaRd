@@ -142,6 +142,18 @@ if(any(model$not.na == FALSE)){
 # CONTINUOUS MODERATOR ----------------------------------------------------
 
  else{
+
+   ## Linear continuous variable ----
+
+   #if the model's moderator does not contain a polynomial, restricted cubic spline, natural cubic spline, or thin plate spline, assume it is linear and proceed with following code
+   if (!grepl('
+              poly|stats::poly|
+              rcs|rms::rcs|
+              ns|splines::ns|
+              smoothCon|mgcv::smoothCon|
+              ',
+              formula(model)[2])){
+
     at2 <- list(mod = seq(min(data[,mod], na.rm = TRUE), max(data[,mod], na.rm = TRUE), length.out = 100))
     names(at2) <- mod
     grid <- emmeans::qdrg(formula =  stats::formula(model), data = data, coef = model$b,
@@ -172,7 +184,7 @@ if(any(model$not.na == FALSE)){
     data2 <- get_data_raw_cont(model, mod, group, N, by = by)
 
   }
-
+ }
 
   output <- list(mod_table = mod_table,
                  data = data2)
