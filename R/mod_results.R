@@ -97,12 +97,14 @@ mod_results <- function(model, mod = "1", group,  N = NULL,  weights = "prop", b
   }
 
 # Extract the data from the model object
-data <- model$data 
+data <- model$data
 
 # Check if missing values exist and use complete case data
 if(any(model$not.na == FALSE)){
 	data <- data[model$not.na,]
 }
+
+# CATEGORICAL MODERATOR ---------------------------------------------------
 
   if(is.character(data[[mod]]) | is.factor(data[[mod]]) | is.null(data[[mod]])) {
     grid <- emmeans::qdrg(formula = stats::formula(model), at = at, data = data, coef = model$b,
@@ -135,6 +137,8 @@ if(any(model$not.na == FALSE)){
     mod_table$name <- factor(mod_table$name,
                              levels = mod_table$name,
                              labels = mod_table$name)
+
+# CONTINUOUS MODERATOR ----------------------------------------------------
 
   } else{
     at2 <- list(mod = seq(min(data[,mod], na.rm = TRUE), max(data[,mod], na.rm = TRUE), length.out = 100))
@@ -199,7 +203,7 @@ pred_interval_esmeans <- function(model, mm, mod, ...){
         tmp <- tmp[ , ]
   test.stat <- stats::qt(0.975, tmp$df[[1]])
 
-  if(length(model$tau2) <= 1 | length(model$gamma2) <= 1){ # Note this should fix #46 but code is repetitive and needs to be cleaned up. Other issue is how this plays with different rma. objects. uni models will treat slots for gamma NULL and we need to deal with this. 
+  if(length(model$tau2) <= 1 | length(model$gamma2) <= 1){ # Note this should fix #46 but code is repetitive and needs to be cleaned up. Other issue is how this plays with different rma. objects. uni models will treat slots for gamma NULL and we need to deal with this.
                  sigmas <- sum(model$sigma2)
                  taus   <- model$tau2
                  gamma2 <- ifelse(is.null(model$gamma2), 0, model$gamma2)
@@ -259,9 +263,9 @@ get_data_raw <- function(model, mod, group, N = NULL, at = NULL, subset = TRUE){
   if(missing(group)){
     stop("Please specify the 'group' argument by providing the name of the grouping variable. See ?mod_results")
   }
- 
+
 # Extract the data from the model object
-  data <- model$data 
+  data <- model$data
 
 # Check if missing values exist and use complete case data
   if(any(model$not.na == FALSE)){
@@ -323,7 +327,7 @@ get_data_raw_cont <- function(model, mod, group, N = NULL, by){
   }
 
   # Extract the data from the model object
-  data <- model$data 
+  data <- model$data
 
 # Check if missing values exist and use complete case data
   if(any(model$not.na == FALSE)){
