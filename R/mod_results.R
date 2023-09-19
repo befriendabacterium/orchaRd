@@ -143,6 +143,9 @@ if(any(model$not.na == FALSE)){
 
  else{
 
+   # extract data
+   data2 <- get_data_raw_cont(model, mod, group, N, by = by)
+
    ## Continuous variable modelled linearly ----
 
    #if the model's moderator does not contain a polynomial, restricted cubic spline, natural cubic spline, or thin plate spline, assume it is linear and proceed with following code
@@ -180,9 +183,6 @@ if(any(model$not.na == FALSE)){
                               upperPR = mm_pi[,"upper.PI"])
     }
 
-    # extract data
-    data2 <- get_data_raw_cont(model, mod, group, N, by = by)
-
    }
 
    #NB non-linear options are based on/limited to the examples given in metafor documentation: https://www.metafor-project.org/doku.php/tips:non_linear_meta_regression
@@ -194,8 +194,27 @@ if(any(model$not.na == FALSE)){
    }
 
    # Continuous variable modelled as a restricted cubic spline ----
+    #NB Not via emmeans as currently quite difficult to implement. See: https://github.com/rvlenth/emmeans/issues/180
 
    if (grepl('rcs|rms::rcs', formula(model)[2])){
+
+      #(re)calculate the knot points for the moderator in the model
+      knots <- attr(rms::rcs(model.matrix(model)[,2],
+                             #figure out how many params were used by grepping rcs from coefficients and adding one (workaround)
+                             sum(grepl('rcs|rms::rcs', names(coef(model))))+1),
+                             "parms")
+      #x values at which to predict y values
+      at2 <- seq(min(data[,mod], na.rm = TRUE), max(data[,mod], na.rm = TRUE), length.out = 100)
+      #create base dataframe from predictions
+      mod_table <- as.data.frame(predict(model, newmods=Hmisc::rcspline.eval(at2, knots, inclx=TRUE)))
+      #add a column for the values of the moderator (at2) used to generate these predictions
+      mod_table <- mod_table %>% dplyr::mutate(moderator=at2,.before = pred)
+      #remove the standard error column to keep same as linear dataframe
+      mod_table$se<-NULL
+      #rename columns to keep same as linear dataframe
+      colnames(mod_table)<-c('moderator','estimate','lowerCL','upperCL','lowerPR','upperPR')
+      #add blank condition column - temporary workaround
+      #mod_table <- mod_table %>% dplyr::mutate(condition=NA,.before = estimate)
 
    }
 
