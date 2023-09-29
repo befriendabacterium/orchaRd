@@ -104,32 +104,44 @@ if(any(model$not.na == FALSE)){
 	data <- data[model$not.na,]
 }
 
-# CATEGORICAL MODERATOR ---------------------------------------------------
-
+#CATEGORICAL MODERATOR ----------------------------------------------------
+# prediction method/code adapted from cornbunting's solution at https://stackoverflow.com/a/64493228/8349925
   if(is.character(data[[mod]]) | is.factor(data[[mod]]) | is.null(data[[mod]])) {
-    grid <- emmeans::qdrg(formula = stats::formula(model), at = at, data = data, coef = model$b,
-                          vcov = stats::vcov(model), df = model$k-1) ## NOTE: Added data argument emmeans >vers 1.7.4. Object is unstable so feeding in the relevant arguments from model object directly. Note, we should think about df!
-    mm <- emmeans::emmeans(grid, specs = mod, df = df_mod, by = by, weights = weights, ...)
 
-    # getting prediction intervals
-    mm_pi <- pred_interval_esmeans(model, mm, mod = mod)
+    #generate x values (levels of categories) from which to predict y values
+    xs = levels(data[[mod]])
 
+    #if there is no conditioning variable...
     if(is.null(by)){
-      mod_table <- data.frame(name = firstup(as.character(mm_pi[,1]), upper = upper),
-                              estimate = mm_pi[,"emmean"],
-                              lowerCL = mm_pi[,"lower.CL"],
-                              upperCL = mm_pi[,"upper.CL"],
-                              lowerPR = mm_pi[,"lower.PI"],
-                              upperPR = mm_pi[,"upper.PI"])
 
+      #initiate dataframe with x values and a blank 'by' column
+      newgrid<-data.frame(xs=xs,by=NA)
+
+      #if there is a conditioning variable...
     } else{
-      mod_table <- data.frame(name = firstup(as.character(mm_pi[,1]), upper = upper),
-                              condition = mm_pi[,2], estimate = mm_pi[,"emmean"],
-                              lowerCL = mm_pi[,"lower.CL"],
-                              upperCL = mm_pi[,"upper.CL"],
-                              lowerPR = mm_pi[,"lower.PI"],
-                              upperPR = mm_pi[,"upper.PI"])
+
+      #initiate dataframe by generating x values for all levels of factors using same term names in same order as in model formula
+      newgrid <- data.frame(expand.grid(xs=xs,by=levels(as.factor(data[,by]))))
+
     }
+
+      #rename columns with the moderator and by variables
+      colnames(newgrid)<-c(mod,by)
+
+      #create the new model matrix and remove the intercept
+      predgrid<-model.matrix(model$formula.mods,data=newgrid)[,-1]
+
+      #predict onto the new model matrix
+      mypreds <- as.data.frame(predict(model, newmods=predgrid))
+
+      #make mod_table
+      mod_table <- data.frame(name = firstup(as.character(newgrid[,mod]), upper = T),
+                              condition = newgrid[,by],
+                              estimate = mypreds$pred,
+                              lowerCL = mypreds$ci.lb,
+                              upperCL = mypreds$ci.ub,
+                              lowerPR = mypreds$pi.lb,
+                              upperPR = mypreds$pi.ub)
 
     # Extract data
     data2 <- get_data_raw(model, mod, group, N, at = at, subset)
@@ -140,99 +152,49 @@ if(any(model$not.na == FALSE)){
   }
 
 # CONTINUOUS MODERATOR ----------------------------------------------------
+# prediction method/code adapted from cornbunting's solution at https://stackoverflow.com/a/64493228/8349925
 
- else{
+else{
 
-   # extract data
-   data2 <- get_data_raw_cont(model, mod, group, N, by = by)
+    #generate x values (continuous x values) from which to predict y values
+    xs <- seq(min(data[,mod], na.rm = TRUE), max(data[,mod], na.rm = TRUE), length.out = 100)
 
-   ## Continuous variable modelled linearly ----
-
-   #if the model's moderator does not contain a polynomial, restricted cubic spline, natural cubic spline, or thin plate spline, assume it is linear and proceed with following code
-   if (!grepl('
-              poly|stats::poly|
-              rcs|rms::rcs|
-              ns|splines::ns|
-              smoothCon|mgcv::smoothCon|
-              ',
-              formula(model)[2])){
-
-    at2 <- list(mod = seq(min(data[,mod], na.rm = TRUE), max(data[,mod], na.rm = TRUE), length.out = 100))
-    names(at2) <- mod
-    grid <- emmeans::qdrg(formula =  stats::formula(model), data = data, coef = model$b,
-                          vcov = stats::vcov(model), df = model$k-1, at = c(at2, at))  # getting 100 points. Fixing this to make it more general
-    mm <- emmeans::emmeans(grid, specs = mod, by = c(mod, by), weights = weights, df = df_mod)
-
-    # getting prediction intervals
-    mm_pi <- pred_interval_esmeans(model, mm, mod = mod)
-
+    #if there is no conditioning variable...
     if(is.null(by)){
-      mod_table <- data.frame(moderator = mm_pi[,1],
-                              estimate = mm_pi[,"emmean"],
-                              lowerCL = mm_pi[,"lower.CL"],
-                              upperCL = mm_pi[,"upper.CL"],
-                              lowerPR = mm_pi[,"lower.PI"],
-                              upperPR = mm_pi[,"upper.PI"])
+
+      #initiate dataframe with x values and a blank 'by' column
+      newgrid<-data.frame(xs=xs,by=NA)
+
+      #if there is a conditioning variable...
     } else{
-      mod_table <- data.frame(moderator = mm_pi[,1],
-                              condition = mm_pi[,2],
-                              estimate = mm_pi[,"emmean"],
-                              lowerCL = mm_pi[,"lower.CL"],
-                              upperCL = mm_pi[,"upper.CL"],
-                              lowerPR = mm_pi[,"lower.PI"],
-                              upperPR = mm_pi[,"upper.PI"])
+
+      #initiate dataframe by generating x values for all levels of factors using same term names in same order as in model formula
+      newgrid <- data.frame(expand.grid(xs=xs,by=levels(as.factor(data[,by]))))
+
     }
 
-   }
+    #rename columns with the moderator and by variables
+    colnames(newgrid)<-c(mod,by)
 
-   #NB non-linear options are based on/limited to the examples given in metafor documentation: https://www.metafor-project.org/doku.php/tips:non_linear_meta_regression
+    #create the new model matrix and remove the intercept
+    predgrid<-model.matrix(model$formula.mods,data=newgrid)[,-1]
 
-   # Continuous variable modelled as a polynomial ----
+    #predict onto the new model matrix
+    mypreds <- as.data.frame(predict(model, newmods=predgrid))
 
-   if (grepl('poly|stats::poly', formula(model)[2])){
+    #make mod_table
+    mod_table <- data.frame(moderator = newgrid[,mod],
+                            condition = newgrid[,by],
+                            estimate = mypreds$pred,
+                            lowerCL = mypreds$ci.lb,
+                            upperCL = mypreds$ci.ub,
+                            lowerPR = mypreds$pi.lb,
+                            upperPR = mypreds$pi.ub)
 
-   }
+}
 
-   # Continuous variable modelled as a restricted cubic spline ----
-    #NB Not via emmeans as currently quite difficult to implement. See: https://github.com/rvlenth/emmeans/issues/180
-
-   if (grepl('rcs|rms::rcs', formula(model)[2])){
-
-      #(re)calculate the knot points for the moderator in the model
-      knots <- attr(rms::rcs(model.matrix(model)[,2],
-                             #figure out how many params were used by grepping rcs from coefficients and adding one (workaround)
-                             sum(grepl('rcs|rms::rcs', names(coef(model))))+1),
-                             "parms")
-      #x values at which to predict y values
-      at2 <- seq(min(data[,mod], na.rm = TRUE), max(data[,mod], na.rm = TRUE), length.out = 100)
-      #create base dataframe from predictions
-      mod_table <- as.data.frame(predict(model, newmods=Hmisc::rcspline.eval(at2, knots, inclx=TRUE)))
-      #add a column for the values of the moderator (at2) used to generate these predictions
-      mod_table <- mod_table %>% dplyr::mutate(moderator=at2,.before = pred)
-      #remove the standard error column to keep same as linear dataframe
-      mod_table$se<-NULL
-      #rename columns to keep same as linear dataframe
-      colnames(mod_table)<-c('moderator','estimate','lowerCL','upperCL','lowerPR','upperPR')
-      #add blank condition column - temporary workaround
-      #mod_table <- mod_table %>% dplyr::mutate(condition=NA,.before = estimate)
-
-   }
-
-   # Continuous variable modelled as a natural cubic spline ----
-
-   if (grepl('ns|splines::ns', formula(model)[2])){
-
-   }
-
-   # Continuous variable modelled as a thin plate spline ----
-
-   if (grepl('smoothCon|mgcv::smoothCon', formula(model)[2])){
-
-   }
-
- }
-
-
+  # extract data
+  data2 <- get_data_raw_cont(model, mod, group, N, by = by)
 
   output <- list(mod_table = mod_table,
                  data = data2)
@@ -241,9 +203,6 @@ if(any(model$not.na == FALSE)){
 
   return(output)
 }
-
-
-
 
 ############# Key Sub-functions #############
 
