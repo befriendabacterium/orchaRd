@@ -68,7 +68,7 @@ mod_results <- function(model, mod = "1", group,  N = NULL,  weights = "prop", b
     warning("It is recommended that you fit the model with an intercept. Unanticipated errors can occur otherwise.")
   }
 
-  if(any(model$struct %in% c("GEN", "HCS"))){
+  if(any(model$struct %in% c("GEN", "HCS"))){ #**MLJ NOTE**: DOESN'T PICK UP MY INNER OUTER RMA MODEL WITH 'CAR' STRUCT
     warning("We noticed you're fitting an ~inner|outer rma model ('random slope'). There are circumstances where the prediction intervals for such models are calculated incorrectly. Please check your results carefully.")
   }
 
@@ -90,23 +90,26 @@ mod_results <- function(model, mod = "1", group,  N = NULL,  weights = "prop", b
     #model$data <- dat_tmp
   }
 
-   if(model$test == "t"){
+  if(model$test == "t"){
     df_mod = as.numeric(model$ddf[[1]])
   } else{
     df_mod = 1.0e6 # almost identical to z value
   }
 
-# Extract the data from the model object
-data <- model$data
+  # Extract the data from the model object
+  data <- model$data
 
-# Check if missing values exist and use complete case data
-if(any(model$not.na == FALSE)){
-	data <- data[model$not.na,]
-}
+  # Check if missing values exist and use complete case data
+  if(any(model$not.na == FALSE)){
+    data <- data[model$not.na,]
+  }
 
-#CATEGORICAL MODERATOR ----------------------------------------------------
-# prediction method/code adapted from cornbunting's solution at https://stackoverflow.com/a/64493228/8349925
+  #CATEGORICAL MODERATOR ----------------------------------------------------
+  # prediction method/code adapted from cornbunting's solution at https://stackoverflow.com/a/64493228/8349925
   if(is.character(data[[mod]]) | is.factor(data[[mod]]) | is.null(data[[mod]])) {
+
+    #coerce moderator to factor if it's a character - or factor (already) or NULL
+    data[[mod]]<-as.factor(data[[mod]])
 
     #generate x values (levels of categories) from which to predict y values
     xs = levels(data[[mod]])
@@ -125,23 +128,29 @@ if(any(model$not.na == FALSE)){
 
     }
 
-      #rename columns with the moderator and by variables
-      colnames(newgrid)<-c(mod,by)
+    #rename columns with the moderator and by variables
+    colnames(newgrid)<-c(mod,by)
 
-      #create the new model matrix and remove the intercept
-      predgrid<-model.matrix(model$formula.mods,data=newgrid)[,-1]
+    #create the new model matrix
+    predgrid<-model.matrix(model$formula.mods,data=newgrid)
 
-      #predict onto the new model matrix
-      mypreds <- as.data.frame(predict(model, newmods=predgrid))
+    #if any of columns is the intercept, remove it from the prediction grid so predict() works properly
+    if(any(colnames(predgrid)!="(Intercept)")){
+      predgrid<-predgrid[,colnames(predgrid)!="(Intercept)"]
+      #colnames(predgrid)[1]<-'intrcpt'
+    }
 
-      #make mod_table
-      mod_table <- data.frame(name = firstup(as.character(newgrid[,mod]), upper = T),
-                              condition = newgrid[,by],
-                              estimate = mypreds$pred,
-                              lowerCL = mypreds$ci.lb,
-                              upperCL = mypreds$ci.ub,
-                              lowerPR = mypreds$pi.lb,
-                              upperPR = mypreds$pi.ub)
+    #predict onto the new model matrix
+    mypreds <- as.data.frame(predict.rma(model, tau2.levels=1:nlevels(data[[mod]]), newmods=predgrid))
+
+    #make mod_table
+    mod_table <- data.frame(name = firstup(as.character(newgrid[,mod]), upper = T),
+                            condition = newgrid[,by],
+                            estimate = mypreds$pred,
+                            lowerCL = mypreds$ci.lb,
+                            upperCL = mypreds$ci.ub,
+                            lowerPR = mypreds$pi.lb,
+                            upperPR = mypreds$pi.ub)
 
     # Extract data
     data2 <- get_data_raw(model, mod, group, N, at = at, subset)
@@ -151,10 +160,10 @@ if(any(model$not.na == FALSE)){
                              labels = mod_table$name)
   }
 
-# CONTINUOUS MODERATOR ----------------------------------------------------
-# prediction method/code adapted from cornbunting's solution at https://stackoverflow.com/a/64493228/8349925
+  # CONTINUOUS MODERATOR ----------------------------------------------------
+  # prediction method/code adapted from cornbunting's solution at https://stackoverflow.com/a/64493228/8349925
 
-else{
+  else{
 
     #generate x values (continuous x values) from which to predict y values
     xs <- seq(min(data[,mod], na.rm = TRUE), max(data[,mod], na.rm = TRUE), length.out = 100)
@@ -176,6 +185,14 @@ else{
     #rename columns with the moderator and by variables
     colnames(newgrid)<-c(mod,by)
 
+    #list other variables in the model
+    othervars<-names(coef(model))[-1][grep('outcome_time_days',names(coef(model))[-1], invert = T)]
+
+    #if there are other variables, set to mean and add to 'newgrid' prediction matrix
+    if(length(othervars)!=0){
+      newgrid[,othervars]<-colMeans(as.data.frame(data[,othervars], na.rm = T))
+    }
+
     #create the new model matrix and remove the intercept
     predgrid<-model.matrix(model$formula.mods,data=newgrid)[,-1]
 
@@ -191,7 +208,7 @@ else{
                             lowerPR = mypreds$pi.lb,
                             upperPR = mypreds$pi.ub)
 
-}
+  }
 
   # extract data
   data2 <- get_data_raw_cont(model, mod, group, N, by = by)
@@ -203,6 +220,7 @@ else{
 
   return(output)
 }
+
 
 ############# Key Sub-functions #############
 
@@ -219,31 +237,31 @@ else{
 
 pred_interval_esmeans <- function(model, mm, mod, ...){
 
-        tmp <- summary(mm)
-        tmp <- tmp[ , ]
+  tmp <- summary(mm)
+  tmp <- tmp[ , ]
   test.stat <- stats::qt(0.975, tmp$df[[1]])
 
   if(length(model$tau2) <= 1 | length(model$gamma2) <= 1){ # Note this should fix #46 but code is repetitive and needs to be cleaned up. Other issue is how this plays with different rma. objects. uni models will treat slots for gamma NULL and we need to deal with this.
-                 sigmas <- sum(model$sigma2)
-                 taus   <- model$tau2
-                 gamma2 <- ifelse(is.null(model$gamma2), 0, model$gamma2)
-                     PI <- test.stat * base::sqrt(tmp$SE^2 + sigmas + taus + gamma2)
-        } else {
-                 sigmas <- sum(model$sigma2)
-                 taus   <- model$tau2
-                 gammas <- model$gamma2
-                  w_tau <- model$g.levels.k
-                w_gamma <- model$g.levels.k
+    sigmas <- sum(model$sigma2)
+    taus   <- model$tau2
+    gamma2 <- ifelse(is.null(model$gamma2), 0, model$gamma2)
+    PI <- test.stat * base::sqrt(tmp$SE^2 + sigmas + taus + gamma2)
+  } else {
+    sigmas <- sum(model$sigma2)
+    taus   <- model$tau2
+    gammas <- model$gamma2
+    w_tau <- model$g.levels.k
+    w_gamma <- model$g.levels.k
 
-            if(mod == "1"){
-                tau <- weighted_var(taus, weights = w_tau)
-              gamma <- weighted_var(gamma, weights = w_gamma)
-                     PI <- test.stat * sqrt(tmp$SE^2 + sigmas + tau + gamma)
+    if(mod == "1"){
+      tau <- weighted_var(taus, weights = w_tau)
+      gamma <- weighted_var(gamma, weights = w_gamma)
+      PI <- test.stat * sqrt(tmp$SE^2 + sigmas + tau + gamma)
 
-            } else {
-               PI <- test.stat * sqrt(tmp$SE^2 + sigmas + taus + gammas)
-            }
-        }
+    } else {
+      PI <- test.stat * sqrt(tmp$SE^2 + sigmas + taus + gammas)
+    }
+  }
 
   tmp$lower.PI <- tmp$emmean - PI
   tmp$upper.PI <- tmp$emmean + PI
@@ -251,7 +269,7 @@ pred_interval_esmeans <- function(model, mm, mod, ...){
   # renaming "overall" to ""
   if(tmp[1,1] == "overall"){tmp[,1] <- "intrcpt"}
 
-return(tmp)
+  return(tmp)
 }
 
 #' @title get_data_raw
@@ -284,10 +302,10 @@ get_data_raw <- function(model, mod, group, N = NULL, at = NULL, subset = TRUE){
     stop("Please specify the 'group' argument by providing the name of the grouping variable. See ?mod_results")
   }
 
-# Extract the data from the model object
+  # Extract the data from the model object
   data <- model$data
 
-# Check if missing values exist and use complete case data
+  # Check if missing values exist and use complete case data
   if(any(model$not.na == FALSE)){
     data <- data[model$not.na,]
   }
@@ -349,7 +367,7 @@ get_data_raw_cont <- function(model, mod, group, N = NULL, by){
   # Extract the data from the model object
   data <- model$data
 
-# Check if missing values exist and use complete case data
+  # Check if missing values exist and use complete case data
   if(any(model$not.na == FALSE)){
     data <- data[model$not.na,]
   }
@@ -362,7 +380,7 @@ get_data_raw_cont <- function(model, mod, group, N = NULL, by){
   moderator <- data[[mod]] # Could default to base instead of tidy
   #names(moderator) <  "moderator"
   if(is.null(by)){
-  condition <- data[ , by]
+    condition <- data[ , by]
   }else{
     condition <- data[[by]]
   }
@@ -395,11 +413,11 @@ get_data_raw_cont <- function(model, mod, group, N = NULL, by){
 #' @export
 
 firstup <- function(x, upper = TRUE) {
-        if(upper){
-        substr(x, 1, 1) <- toupper(substr(x, 1, 1))
-        x
-        } else{ x }
-      }
+  if(upper){
+    substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+    x
+  } else{ x }
+}
 
 
 #' @title print.orchard
@@ -413,7 +431,7 @@ firstup <- function(x, upper = TRUE) {
 #'
 
 print.orchard <- function(x, ...){
-    return(print(x$mod_table))
+  return(print(x$mod_table))
 }
 
 #' @title weighted_var
@@ -427,8 +445,8 @@ print.orchard <- function(x, ...){
 #'
 
 weighted_var <- function(x, weights){
-    weight_var <- sum(x * weights) / sum(weights)
-    return(weight_var)
+  weight_var <- sum(x * weights) / sum(weights)
+  return(weight_var)
 }
 
 
@@ -451,13 +469,13 @@ weighted_var <- function(x, weights){
 num_studies <- function(data, mod, group){
 
   # Summarize the number of studies within each level of moderator
-   table <- data        %>%
-            dplyr::group_by({{mod}}) %>%
-            dplyr::summarise(stdy = length(unique({{group}})))
+  table <- data        %>%
+    dplyr::group_by({{mod}}) %>%
+    dplyr::summarise(stdy = length(unique({{group}})))
 
-   table <- table[!is.na(table$moderator),]
+  table <- table[!is.na(table$moderator),]
   # Rename, and return
-    colnames(table) <- c("Parameter", "Num_Studies")
-      return(data.frame(table))
+  colnames(table) <- c("Parameter", "Num_Studies")
+  return(data.frame(table))
 
 }
