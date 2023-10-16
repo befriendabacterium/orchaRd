@@ -186,7 +186,7 @@ mod_results <- function(model, mod = "1", group,  N = NULL,  weights = "prop", b
     colnames(newgrid)<-c(mod,by)
 
     #list other variables in the model
-    othervars<-names(coef(model))[-1][grep('outcome_time_days',names(coef(model))[-1], invert = T)]
+    othervars<-names(coef(model))[-1][grep(mod,names(coef(model))[-1], invert = T)]
 
     #if there are other variables, set to mean and add to 'newgrid' prediction matrix
     if(length(othervars)!=0){
